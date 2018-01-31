@@ -139,7 +139,90 @@ OpenGLTOP::getOutputFormat(TOP_OutputFormat* format)
 	// In this example we'll return false and use the TOP's settings
 	return false;
 }
+struct float2 { float x, y; };
+struct rect
+{
+	float x, y;
+	float w, h;
 
+	// Create new rect within original boundaries with give aspect ration
+	rect adjust_ratio(float2 size) const
+	{
+		auto H = static_cast<float>(h), W = static_cast<float>(h) * size.x / size.y;
+		if (W > w)
+		{
+			auto scale = w / W;
+			W *= scale;
+			H *= scale;
+		}
+
+		return{ x + (w - W) / 2, y + (h - H) / 2, W, H };
+	}
+};
+
+// COPIED and slightly modified from
+// https://github.com/IntelRealSense/librealsense/blob/master/examples/example.hpp
+void upload(const rs2::video_frame& frame, GLuint gl_handle)
+{
+	if (!frame) return;
+
+	if (!gl_handle)
+		glGenTextures(1, &gl_handle);
+	GLenum err = glGetError();
+
+	auto format = frame.get_profile().format();
+	int width = frame.get_width();
+	int height = frame.get_height();
+	//stream = frame.get_profile().stream_type();
+
+	glBindTexture(GL_TEXTURE_2D, gl_handle);
+
+	switch (format)
+	{
+	case RS2_FORMAT_RGB8:
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, frame.get_data());
+		break;
+	case RS2_FORMAT_RGBA8:
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, frame.get_data());
+		break;
+	case RS2_FORMAT_Y8:
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame.get_data());
+		break;
+	case RS2_FORMAT_Z16: // add in case for grayscale depth texture
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, frame.get_data());
+		break;
+	default:
+		throw std::runtime_error("The requested format is not supported by this demo!");
+	}
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+// COPIED and slightly modified from
+// https://github.com/IntelRealSense/librealsense/blob/master/examples/example.hpp
+void show(const rect& r, GLuint gl_handle)
+{
+	if (!gl_handle)
+		return;
+
+	glBindTexture(GL_TEXTURE_2D, gl_handle);
+	glEnable(GL_TEXTURE_2D);
+	glBegin(GL_QUAD_STRIP);
+	glTexCoord2f(0.f, 1.f); glVertex2f(r.x, r.y + r.h);
+	glTexCoord2f(0.f, 0.f); glVertex2f(r.x, r.y);
+	glTexCoord2f(1.f, 1.f); glVertex2f(r.x + r.w, r.y + r.h);
+	glTexCoord2f(1.f, 0.f); glVertex2f(r.x + r.w, r.y);
+	glEnd();
+	glDisable(GL_TEXTURE_2D);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	//draw_text((int)r.x + 15, (int)r.y + 20, rs2_stream_to_string(stream));
+}
 
 void
 OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
@@ -148,23 +231,9 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 {
 	if (!hasStarted) {
 		hasStarted = true;
-
-		rs2::pipeline pipe;
-		pipePointer = &pipe;
-		pipePointer->start();
+		
+		pipe.start();
 	}
-
-	bool didFail = false;
-	if (hasStarted) {
-
-		try {
-			rs2::frameset data = pipePointer->wait_for_frames();
-			//data.get_depth_frame();
-		} catch (const rs2::wrong_api_call_sequence_error& e) {
-			didFail = true;
-		}
-	}
-
 	myExecuteCount++;
 
 	// These functions must be called before
@@ -176,16 +245,6 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 
 	inputs->getParDouble3("Color1", color1[0], color1[1], color1[2]);
 	inputs->getParDouble3("Color2", color2[0], color2[1], color2[2]);
-
-	if (didFail) {
-		// set red didFail debug color
-		color1[0] = 1.;
-		color1[1] = 0.;
-		color1[2] = 0.;
-		color2[0] = 1.;
-		color2[1] = 0.;
-		color2[2] = 0.;
-	}
 
     myRotation += speed;
 
@@ -241,6 +300,24 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
         // Tidy up
 
         glBindVertexArray(0);
+
+		// start realsense render
+		if (hasStarted) {
+
+			pipe.wait_for_frames();
+			rs2::frameset data = pipe.wait_for_frames();
+			rs2::depth_frame depth = data.get_depth_frame();
+
+			// Get the depth frame's dimensions
+			int width = depth.get_width();
+			int height = depth.get_height();
+
+			upload(depth, gl_handle);
+			rect r;
+			show(r.adjust_ratio({ float(width), float(height) }), gl_handle);
+		}
+		// end realsense render
+
         glUseProgram(0);
     }
 
