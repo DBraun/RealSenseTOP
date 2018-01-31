@@ -1,1 +1,3 @@
 Release/*
+*.VC.db
+*.vs*

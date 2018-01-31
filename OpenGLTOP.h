@@ -67,4 +67,5 @@ private:
     GLint                   myColorUniform;
 
 	bool hasStarted = false;
+	rs2::pipeline *pipePointer;
 };

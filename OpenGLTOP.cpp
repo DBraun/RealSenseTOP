@@ -19,8 +19,6 @@
 
 #include <librealsense2/rs.hpp> // Include RealSense Cross Platform API
 
-rs2::pipeline pipe;
-
 static const char *vertexShader = "#version 330\n\
 uniform mat4 uModelView; \
 in vec3 P; \
@@ -151,11 +149,21 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 	if (!hasStarted) {
 		hasStarted = true;
 
-		pipe.start();
+		rs2::pipeline pipe;
+		pipePointer = &pipe;
+		pipePointer->start();
 	}
 
-	// rs2::frameset data = pipe.wait_for_frames();
-	// data.get_depth_frame();
+	bool didFail = false;
+	if (hasStarted) {
+
+		try {
+			rs2::frameset data = pipePointer->wait_for_frames();
+			//data.get_depth_frame();
+		} catch (const rs2::wrong_api_call_sequence_error& e) {
+			didFail = true;
+		}
+	}
 
 	myExecuteCount++;
 
@@ -168,6 +176,16 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 
 	inputs->getParDouble3("Color1", color1[0], color1[1], color1[2]);
 	inputs->getParDouble3("Color2", color2[0], color2[1], color2[2]);
+
+	if (didFail) {
+		// set red didFail debug color
+		color1[0] = 1.;
+		color1[1] = 0.;
+		color1[2] = 0.;
+		color2[0] = 1.;
+		color2[1] = 0.;
+		color2[2] = 0.;
+	}
 
     myRotation += speed;
 
