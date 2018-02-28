@@ -229,12 +229,15 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 							OP_Inputs* inputs,
 							TOP_Context* context)
 {
+	myExecuteCount++;
+
 	if (!hasStarted) {
 		hasStarted = true;
-		
-		pipe.start();
+		rs2::pipeline_profile profile = pipe.start();
+		if (!profile) {
+			throw(-1);
+		}
 	}
-	myExecuteCount++;
 
 	// These functions must be called before
 	// beginGLCommands()/endGLCommands() block
@@ -260,68 +263,79 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
     
     setupGL();
 
-    if (!myError)
-    {
-        glViewport(0, 0, width, height);
-        glClearColor(0.0, 0.0, 0.0, 0.0);
-        glClear(GL_COLOR_BUFFER_BIT);
+	if (!myError)
+	{
+		glViewport(0, 0, width, height);
+		glClearColor(0.0, 0.0, 0.0, 0.0);
+		glClear(GL_COLOR_BUFFER_BIT);
 
-        glUseProgram(myProgram.getName());
+		glUseProgram(myProgram.getName());
 
-        // Draw the square
+		// Draw the square
 
-        glUniform4f(myColorUniform, static_cast<GLfloat>(color1[0]), static_cast<GLfloat>(color1[1]), static_cast<GLfloat>(color1[2]), 1.0f);
+		glUniform4f(myColorUniform, static_cast<GLfloat>(color1[0]), static_cast<GLfloat>(color1[1]), static_cast<GLfloat>(color1[2]), 1.0f);
 
-        mySquare.setTranslate(0.5f, 0.5f);
-        mySquare.setRotation(static_cast<GLfloat>(myRotation));
+		mySquare.setTranslate(0.5f, 0.5f);
+		mySquare.setRotation(static_cast<GLfloat>(myRotation));
 
-        Matrix model = mySquare.getMatrix();
-        glUniformMatrix4fv(myModelViewUniform, 1, GL_FALSE, (model * view).matrix);
+		Matrix model = mySquare.getMatrix();
+		glUniformMatrix4fv(myModelViewUniform, 1, GL_FALSE, (model * view).matrix);
 
-        mySquare.bindVAO();
+		mySquare.bindVAO();
 
-        glDrawArrays(GL_TRIANGLES, 0, mySquare.getElementCount() / 3);
+		glDrawArrays(GL_TRIANGLES, 0, mySquare.getElementCount() / 3);
 
-        // Draw the chevron
+		// Draw the chevron
 
-        glUniform4f(myColorUniform, static_cast<GLfloat>(color2[0]), static_cast<GLfloat>(color2[1]), static_cast<GLfloat>(color2[2]), 1.0f);
+		glUniform4f(myColorUniform, static_cast<GLfloat>(color2[0]), static_cast<GLfloat>(color2[1]), static_cast<GLfloat>(color2[2]), 1.0f);
 
-        myChevron.setScale(0.8f, 0.8f);
-        myChevron.setTranslate(-0.5, -0.5);
-        myChevron.setRotation(static_cast<GLfloat>(myRotation));
+		myChevron.setScale(0.8f, 0.8f);
+		myChevron.setTranslate(-0.5, -0.5);
+		myChevron.setRotation(static_cast<GLfloat>(myRotation));
 
-        model = myChevron.getMatrix();
-        glUniformMatrix4fv(myModelViewUniform, 1, GL_FALSE, (model * view).matrix);
+		model = myChevron.getMatrix();
+		glUniformMatrix4fv(myModelViewUniform, 1, GL_FALSE, (model * view).matrix);
 
-        myChevron.bindVAO();
+		myChevron.bindVAO();
 
-        glDrawArrays(GL_TRIANGLES, 0, myChevron.getElementCount() / 3);
+		glDrawArrays(GL_TRIANGLES, 0, myChevron.getElementCount() / 3);
 
-        // Tidy up
+		// Tidy up
 
-        glBindVertexArray(0);
+		glBindVertexArray(0);
 
 		// start realsense render
-		if (hasStarted) {
-
-			pipe.wait_for_frames();
+		if (hasStarted && myExecuteCount > 100) {
+			/*
 			rs2::frameset data = pipe.wait_for_frames();
 			rs2::depth_frame depth = data.get_depth_frame();
-
-			// Get the depth frame's dimensions
 			int width = depth.get_width();
 			int height = depth.get_height();
 
 			upload(depth, gl_handle);
 			rect r;
 			show(r.adjust_ratio({ float(width), float(height) }), gl_handle);
+			*/
+			rs2::frameset frames;
+			if (pipe.poll_for_frames(&frames)) {
+				// todo: this section is never reached?
+				rs2::depth_frame depth = frames.first(RS2_STREAM_DEPTH);
+
+				int width = depth.get_width();
+				int height = depth.get_height();
+
+				upload(depth, gl_handle);
+				rect r;
+				show(r.adjust_ratio({ float(width), float(height) }), gl_handle);
+			}
 		}
 		// end realsense render
 
-        glUseProgram(0);
-    }
+		glUseProgram(0);
+		
+	}
 
-    context->endGLCommands();
+	context->endGLCommands();
 }
 
 int32_t

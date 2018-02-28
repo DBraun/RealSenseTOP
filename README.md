@@ -9,6 +9,7 @@
 4. Hit F5 on your keyboard, which will open the TouchDesigner099 project.
 
 ## changelog
+* 2018-02-27 No crash/freeze, but the rs2::pipeline doesn't return frames, so it's blank.
 * 2018-01-31 No crash/freeze, but the depth doesn't render and there's a memory leak.
 * 2018-01-31 TouchDesigner loads dll but freezes. "librealsense::wrong_api_call_sequence_exception"
 * 2018-01-29 first commit, but .dll file has errors
