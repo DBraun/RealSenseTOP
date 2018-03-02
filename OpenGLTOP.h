@@ -66,7 +66,6 @@ private:
     GLint                   myModelViewUniform;
     GLint                   myColorUniform;
 
-	bool hasStarted = false;
 	rs2::pipeline pipe;
 	GLuint gl_handle;
 };

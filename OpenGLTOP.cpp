@@ -18,6 +18,7 @@
 #include <cstdio>
 
 #include <librealsense2/rs.hpp> // Include RealSense Cross Platform API
+#include <iostream>
 
 static const char *vertexShader = "#version 330\n\
 uniform mat4 uModelView; \
@@ -91,6 +92,20 @@ OpenGLTOP::OpenGLTOP(const OP_NodeInfo* info, TOP_Context *context)
 : myNodeInfo(info), myExecuteCount(0), myRotation(0.0), myError(nullptr),
     myProgram(), myDidSetup(false), myModelViewUniform(-1), myColorUniform(-1)
 {
+	rs2::context ctx;
+	auto list = ctx.query_devices(); // Get a snapshot of currently connected devices
+	if (list.size() == 0)
+		throw std::runtime_error("No device detected. Is it plugged in?");
+	rs2::device dev = list.front();
+
+	dev.hardware_reset();
+	rs2::device_hub hub(ctx);
+	dev = hub.wait_for_device();
+
+	rs2::pipeline_profile profile = pipe.start();
+	if (!profile) {
+		throw(-1);
+	}
 
 #ifdef WIN32
 	// GLEW is global static function pointers, only needs to be inited once,
@@ -231,14 +246,6 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 {
 	myExecuteCount++;
 
-	if (!hasStarted) {
-		hasStarted = true;
-		rs2::pipeline_profile profile = pipe.start();
-		if (!profile) {
-			throw(-1);
-		}
-	}
-
 	// These functions must be called before
 	// beginGLCommands()/endGLCommands() block
 	double speed = inputs->getParDouble("Speed");
@@ -258,7 +265,7 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 
     Matrix view;
     view[0] = ratio;
-
+	
     context->beginGLCommands();
     
     setupGL();
@@ -305,22 +312,12 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 		glBindVertexArray(0);
 
 		// start realsense render
-		if (hasStarted && myExecuteCount > 100) {
-			/*
-			rs2::frameset data = pipe.wait_for_frames();
-			rs2::depth_frame depth = data.get_depth_frame();
-			int width = depth.get_width();
-			int height = depth.get_height();
-
-			upload(depth, gl_handle);
-			rect r;
-			show(r.adjust_ratio({ float(width), float(height) }), gl_handle);
-			*/
-			rs2::frameset frames;
-			if (pipe.poll_for_frames(&frames)) {
-				// todo: this section is never reached?
-				rs2::depth_frame depth = frames.first(RS2_STREAM_DEPTH);
-
+		try
+		{
+			rs2::frameset frames = pipe.wait_for_frames(100);
+			rs2::frame frame = frames.first(RS2_STREAM_DEPTH);
+			if (frame) {
+				rs2::depth_frame depth = frames.get_depth_frame();
 				int width = depth.get_width();
 				int height = depth.get_height();
 
@@ -329,7 +326,11 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 				show(r.adjust_ratio({ float(width), float(height) }), gl_handle);
 			}
 		}
-		// end realsense render
+		catch (const std::exception&e)
+		{
+			std::cout << "RS - Error: " << e.what() << std::endl;
+		}
+		// emd realsense render
 
 		glUseProgram(0);
 		
