@@ -102,7 +102,12 @@ OpenGLTOP::OpenGLTOP(const OP_NodeInfo* info, TOP_Context *context)
 	rs2::device_hub hub(ctx);
 	dev = hub.wait_for_device();
 
-	rs2::pipeline_profile profile = pipe.start();
+	int width = 848;
+	int height = 480;
+	rs2::config config;
+	config.enable_stream(RS2_STREAM_DEPTH, width, height, RS2_FORMAT_ANY, 60);
+
+	rs2::pipeline_profile profile = pipe.start(config);
 	if (!profile) {
 		throw(-1);
 	}
@@ -330,7 +335,7 @@ OpenGLTOP::execute(const TOP_OutputFormatSpecs* outputFormat ,
 		{
 			std::cout << "RS - Error: " << e.what() << std::endl;
 		}
-		// emd realsense render
+		// end realsense render
 
 		glUseProgram(0);
 		

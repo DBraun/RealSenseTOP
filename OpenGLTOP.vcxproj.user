@@ -2,7 +2,12 @@
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerCommand>C:\Program Files\Derivative\TouchDesigner099\bin\TouchDesigner099.exe</LocalDebuggerCommand>
-    <LocalDebuggerCommandArguments>NewProject.toe</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>TouchDesigner/RealSenseTOP.toe</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LocalDebuggerCommand>C:\Program Files\Derivative\TouchDesigner099\bin\TouchDesigner099.exe</LocalDebuggerCommand>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArguments>TouchDesigner/RealSenseTOP.toe</LocalDebuggerCommandArguments>
   </PropertyGroup>
 </Project>
