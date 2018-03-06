@@ -52,4 +52,8 @@ private:
 
 	rs2::pipeline pipe;
 	float depth_scale;
+
+	rs2::pointcloud pc;
+	rs2::points points;
+	int image_mode;
 };

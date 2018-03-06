@@ -110,7 +110,13 @@ CPUMemoryTOP::getGeneralInfo(TOP_GeneralInfo* ginfo)
 	// Uncomment this line if you want the TOP to cook every frame even
 	// if none of it's inputs/parameters are changing.
 	ginfo->cookEveryFrame = true;
-    ginfo->memPixelType = OP_CPUMemPixelType::R32Float;
+	if (image_mode == 0) {
+		ginfo->memPixelType = OP_CPUMemPixelType::R32Float;
+	}
+	else {
+		ginfo->memPixelType = OP_CPUMemPixelType::RGBA32Float;
+	}
+    
 	ginfo->clearBuffers = false;
 }
 
@@ -121,16 +127,19 @@ CPUMemoryTOP::getOutputFormat(TOP_OutputFormat* format)
 	// the pixel format/resolution etc that we want to output to.
 	// If we did that, we'd want to return true to tell the TOP to use the settings we've
 	// specified.
-	// In this example we'll return false and use the TOP's settings
 
 	format->width = 848;
 	format->height = 480;
 	format->bitsPerChannel = 16;
 	format->numColorBuffers = 1;
-	format->blueChannel = false;
-	format->greenChannel = false;
-	format->alphaChannel = false;
 	format->floatPrecision = true;
+
+	bool needOtherChannels = image_mode > 0;
+
+	format->redChannel = true;
+	format->blueChannel = needOtherChannels;
+	format->greenChannel = needOtherChannels;
+	format->alphaChannel = needOtherChannels;
 
 	return true;
 }
@@ -158,20 +167,44 @@ CPUMemoryTOP::execute(const TOP_OutputFormatSpecs* outputFormat,
 
 		float* mem = (float*)outputFormat->cpuPixelData[textureMemoryLocation];
 
-		for (int y = 0; y < height; ++y)
-		{
-			for (int x = 0; x < width; ++x)
+		if (image_mode == 0) {
+			// depth
+			for (int y = 0; y < height; ++y)
 			{
-				float* pixel = &mem[(y*width + x)]; // or &mem[4*(y*width + x)] if RGBA
+				for (int x = 0; x < width; ++x)
+				{
+					float* pixel = &mem[(y*width + x)]; // or &mem[4*(y*width + x)] if RGBA
 
-				const uint16_t myDepth = pixels[(height-1-y)*width + x];
+					const uint16_t myDepth = pixels[(height - 1 - y)*width + x];
 
-				pixel[0] = depth_scale*myDepth;
-				//pixel[1] = 1.;
-				//pixel[2] = 1.;
-				//pixel[3] = 1.;
+					pixel[0] = depth_scale * myDepth;
+				}
+			}
+		} else {
+			// point cloud
+			points = pc.calculate(depth_frame);
+
+			auto vertices = points.get_vertices();
+
+			for (int y = 0; y < height; ++y)
+			{
+				for (int x = 0; x < width; ++x)
+				{
+					float* pixel = &mem[4 * (y*width + x)]; // or &mem[4*(y*width + x)] if RGBA
+
+					const uint16_t myDepth = pixels[(height - 1 - y)*width + x];
+
+					auto vertex = vertices[(height - 1 - y)*width + x];
+
+					pixel[0] = vertex.x;
+					pixel[1] = vertex.y;
+					pixel[2] = vertex.z;
+					pixel[3] = 1.;
+				}
 			}
 		}
+
+		image_mode = inputs->getParInt("Image");
 
 		outputFormat->newCPUPixelDataLocation = textureMemoryLocation;
 		textureMemoryLocation = !textureMemoryLocation;
@@ -249,42 +282,25 @@ CPUMemoryTOP::getInfoDATEntries(int32_t index,
 void
 CPUMemoryTOP::setupParameters(OP_ParameterManager* manager)
 {
-	// brightness
+
+	// Mode
 	{
-		OP_NumericParameter	np;
+		OP_StringParameter	sp;
 
-		np.name = "Brightness";
-		np.label = "Brightness";
-		np.defaultValues[0] = 1.0;
+		sp.name = "Image";
+		sp.label = "Image";
 
-		np.minSliders[0] =  0.0;
-		np.maxSliders[0] =  1.0;
+		sp.defaultValue = "Depth";
 
-		np.minValues[0] = 0.0;
-		np.maxValues[0] = 1.0;
+		const char *names[] = { "Depth", "Pointcloud"};
+		const char *labels[] = { "Depth", "Point Cloud"};
 
-		np.clampMins[0] = true;
-		np.clampMaxes[0] = true;
-		
-		OP_ParAppendResult res = manager->appendFloat(np);
-		assert(res == OP_ParAppendResult::Success);
-	}
-
-	// speed
-	{
-		OP_NumericParameter	np;
-
-		np.name = "Speed";
-		np.label = "Speed";
-		np.defaultValues[0] = 1.0;
-		np.minSliders[0] = -10.0;
-		np.maxSliders[0] =  10.0;
-		
-		OP_ParAppendResult res = manager->appendFloat(np);
+		OP_ParAppendResult res = manager->appendMenu(sp, 2, names, labels);
 		assert(res == OP_ParAppendResult::Success);
 	}
 
 	// pulse
+	/*
 	{
 		OP_NumericParameter	np;
 
@@ -294,6 +310,7 @@ CPUMemoryTOP::setupParameters(OP_ParameterManager* manager)
 		OP_ParAppendResult res = manager->appendPulse(np);
 		assert(res == OP_ParAppendResult::Success);
 	}
+	*/
 
 }
 
