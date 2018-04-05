@@ -17,6 +17,7 @@
 
 #include <iostream> // just for debugging
 #include <librealsense2/rs.hpp> // Include RealSense Cross Platform API
+#include <sstream>
 
 
 // These functions are basic C function, which the DLL loader can find
@@ -65,38 +66,6 @@ DestroyTOPInstance(TOP_CPlusPlusBase* instance, TOP_Context *context)
 CPUMemoryTOP::CPUMemoryTOP(const OP_NodeInfo* info) : myNodeInfo(info)
 {
 	myExecuteCount = 0;
-
-	rs2::context ctx;
-	auto list = ctx.query_devices(); // Get a snapshot of currently connected devices
-	if (list.size() == 0)
-		throw std::runtime_error("No device detected. Is it plugged in?");
-	rs2::device dev = list.front();
-
-	//dev.hardware_reset();
-	//rs2::device_hub hub(ctx);
-	//dev = hub.wait_for_device();
-
-	int width = 848;
-	int height = 480;
-	rs2::config config;
-	config.enable_stream(RS2_STREAM_DEPTH, width, height, RS2_FORMAT_Z16, 60);
-
-	rs2::pipeline_profile profile = pipe.start(config);
-	if (!profile) {
-		throw(-1);
-	}
-
-	dev = profile.get_device();
-
-	for (rs2::sensor& sensor : dev.query_sensors())
-	{
-		// Check if the sensor is a depth sensor
-		if (rs2::depth_sensor dpt = sensor.as<rs2::depth_sensor>())
-		{
-			depth_scale = dpt.get_depth_scale();
-			break;
-		}
-	}
 }
 
 CPUMemoryTOP::~CPUMemoryTOP()
@@ -120,6 +89,69 @@ CPUMemoryTOP::getGeneralInfo(TOP_GeneralInfo* ginfo)
 	ginfo->clearBuffers = false;
 }
 
+void CPUMemoryTOP::setupDevice(const char* sensorID) {
+	rs2::context ctx;
+	auto list = ctx.query_devices(); // Get a snapshot of currently connected devices
+	if (list.size() == 0)
+		throw std::runtime_error("No device detected. Is it plugged in?");
+
+	for (rs2::device temp : list) {
+
+		auto new_serial = temp.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+		
+		std::stringstream ss;
+		ss << "Sensor";
+		ss << new_serial;
+
+		if (strcmp(ss.str().c_str(), sensorID) == 0) {
+			mySensorID = sensorID;
+
+			// stop the current stream/pipe if it's running
+			try {
+				// todo: Don't just try to stop it.
+				// Only stop it if it was started.
+				pipe.stop();
+			}
+			catch (const std::exception&e) {
+				std::cout << "RS2 - Error: " << e.what() << std::endl;
+			}
+
+			// todo: refuse to setup the device if it's already in use
+			// by a different cplusplus TOP
+
+			//dev.hardware_reset();
+			//rs2::device_hub hub(ctx);
+			//dev = hub.wait_for_device();
+
+			int width = 848;
+			int height = 480;
+			int FPS = 60;
+			rs2::config config;
+			config.enable_device(new_serial);
+			config.enable_stream(RS2_STREAM_DEPTH, width, height, RS2_FORMAT_Z16, FPS);
+
+			rs2::pipeline_profile profile = pipe.start(config);
+			if (!profile) {
+				throw(-1);
+			}
+
+			rs2::device dev = profile.get_device();
+
+			for (rs2::sensor& sensor : dev.query_sensors())
+			{
+				// Check if the sensor is a depth sensor
+				if (rs2::depth_sensor dpt = sensor.as<rs2::depth_sensor>())
+				{
+					depth_scale = dpt.get_depth_scale();
+					break;
+				}
+			}
+
+			break;
+		}
+	}
+}
+
 bool
 CPUMemoryTOP::getOutputFormat(TOP_OutputFormat* format)
 {
@@ -134,7 +166,7 @@ CPUMemoryTOP::getOutputFormat(TOP_OutputFormat* format)
 	format->numColorBuffers = 1;
 	format->floatPrecision = true;
 
-	bool needOtherChannels = image_mode > 0;
+	bool needOtherChannels = image_mode > 0; // true if point cloud mode
 
 	format->redChannel = true;
 	format->blueChannel = needOtherChannels;
@@ -153,6 +185,13 @@ CPUMemoryTOP::execute(const TOP_OutputFormatSpecs* outputFormat,
 
 	try
 	{
+
+		const char* currentSensor = inputs->getParString("Sensor");
+
+		if (strcmp(mySensorID.c_str(), currentSensor) != 0) {
+			setupDevice(currentSensor);
+		}
+
 		rs2::frameset frames;
 		if (!pipe.poll_for_frames(&frames)) {
 			return;
@@ -296,6 +335,45 @@ CPUMemoryTOP::setupParameters(OP_ParameterManager* manager)
 		const char *labels[] = { "Depth", "Point Cloud"};
 
 		OP_ParAppendResult res = manager->appendMenu(sp, 2, names, labels);
+		assert(res == OP_ParAppendResult::Success);
+	}
+
+	// Sensor
+	{
+		OP_StringParameter	sp;
+
+		sp.name = "Sensor";
+		sp.label = "Sensor";
+
+		sp.defaultValue = "";
+
+		rs2::context ctx;
+		auto list = ctx.query_devices(); // Get a snapshot of currently connected devices
+		if (list.size() == 0)
+			throw std::runtime_error("No device detected. Is it plugged in?");
+
+		size_t numDevices = list.size();
+		std::vector<const char*> names;
+		std::vector<const char*> labels;
+
+		std::vector<std::string> names_strs;
+		std::vector<std::string> labels_strs;
+
+		for (auto dev : list) {
+			std::stringstream ss;
+			ss << "Sensor";
+			ss << dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+			names_strs.push_back(ss.str());
+			labels_strs.push_back(ss.str());
+		}
+
+		// Convert to a vector of c-style strings
+		for (const auto& string : names_strs) names.push_back(string.c_str());
+		for (const auto& string : labels_strs) labels.push_back(string.c_str());
+
+		sp.defaultValue = names[0];
+
+		OP_ParAppendResult res = manager->appendMenu(sp, numDevices, names.data(), labels.data());
 		assert(res == OP_ParAppendResult::Success);
 	}
 

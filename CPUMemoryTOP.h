@@ -39,6 +39,8 @@ public:
 	virtual void		setupParameters(OP_ParameterManager *manager) override;
 	virtual void		pulsePressed(const char *name) override;
 
+	virtual void CPUMemoryTOP::setupDevice(const char* sensorID);
+
 private:
 
     // We don't need to store this pointer, but we do for the example.
@@ -56,4 +58,7 @@ private:
 	rs2::pointcloud pc;
 	rs2::points points;
 	int image_mode;
+
+	//const char* mySensorID = "";
+	std::string mySensorID;
 };
